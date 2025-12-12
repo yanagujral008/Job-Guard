@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAuth } from "@/contexts/auth-context";
+import ReportJobForm from "@/components/report-job-form";
 import { 
   AlertTriangle, 
   Shield, 
@@ -20,25 +22,47 @@ import {
   MapPin,
   DollarSign,
   User,
-  FileText
+  FileText,
+  Plus
 } from "lucide-react";
 
 export default function Reports() {
+  // State hooks
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [reasonFilter, setReasonFilter] = useState<string>("");
-
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  
+  // Auth hook
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  
+  // Data fetching hooks - must be called unconditionally
   const { data: reports = [], isLoading: reportsLoading } = useQuery({
     queryKey: ["/api/job-reports"],
+    enabled: !authLoading, // Only fetch if auth is loaded
   }) as { data: any[], isLoading: boolean };
 
   const { data: jobs = [], isLoading: jobsLoading } = useQuery({
     queryKey: ["/api/jobs"],
+    enabled: !authLoading, // Only fetch if auth is loaded
   }) as { data: any[], isLoading: boolean };
 
   const { data: stats } = useQuery({
     queryKey: ["/api/stats"],
+    enabled: !authLoading, // Only fetch if auth is loaded
   }) as { data: any };
+  
+  // Show loading state while checking auth
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#0B0C10] text-white">
+        <Header />
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+      </div>
+    );
+  }
 
   // Get reported jobs with details
   const reportedJobs = reports.map((report: any) => {
@@ -74,11 +98,11 @@ export default function Reports() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "pending":
-        return <Badge variant="secondary">Under Review</Badge>;
+        return <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30">Under Review</Badge>;
       case "verified":
-        return <Badge className="bg-red-100 text-red-800">Confirmed Fake</Badge>;
+        return <Badge className="bg-red-500/20 text-red-400 border-red-500/30">Confirmed Fake</Badge>;
       case "dismissed":
-        return <Badge className="bg-green-100 text-green-800">Dismissed</Badge>;
+        return <Badge className="bg-green-500/20 text-green-400 border-green-500/30">Dismissed</Badge>;
       default:
         return <Badge variant="secondary">Unknown</Badge>;
     }
@@ -94,9 +118,9 @@ export default function Reports() {
 
   const getJobStatusColor = (status: string) => {
     switch (status) {
-      case "suspicious": return "border-amber-200 bg-amber-50";
-      case "fake": return "border-red-200 bg-red-50";
-      default: return "";
+      case "suspicious": return "border-amber-500/30 bg-amber-500/10";
+      case "fake": return "border-red-500/30 bg-red-500/10";
+      default: return "border-[#2E3A47] bg-[#1F2833]";
     }
   };
 
@@ -109,194 +133,163 @@ export default function Reports() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#0B0C10]">
       <Header />
       
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Fake Job Reports & Detection</h1>
-          <p className="text-gray-600">
-            Community-driven fake job detection and reporting system
-          </p>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-white">Job Reports</h1>
+            <p className="mt-2 text-sm text-[#C5C6C7]">Review and manage reported job listings</p>
+          </div>
+          <Button 
+            className="bg-[#00AEEF] hover:bg-[#0095D6] text-white"
+            onClick={() => {
+              console.log('Button clicked, isAuthenticated:', isAuthenticated, 'User:', user);
+              if (isAuthenticated) {
+                setIsReportModalOpen(true);
+              } else {
+                window.location.href = '/login?redirect=/reports';
+              }
+            }}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            {isAuthenticated ? 'Report a Job/Course' : 'Sign in to Report'}
+          </Button>
         </div>
 
         {/* Alert Banner */}
-        <Alert className="mb-6 border-amber-200 bg-amber-50">
-          <AlertTriangle className="h-4 w-4 text-amber-500" />
-          <AlertDescription className="text-amber-800">
+        <Alert className="mb-6 border-amber-500/30 bg-amber-500/10">
+          <AlertTriangle className="h-4 w-4 text-amber-400" />
+          <AlertDescription className="text-amber-200">
             <strong>Stay Safe:</strong> Always verify job postings independently. Never pay for job applications or provide sensitive personal information upfront.
           </AlertDescription>
         </Alert>
 
-        {/* Stats Overview */}
-        {stats && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center space-x-3">
-                  <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
-                    <AlertTriangle className="text-red-600" size={20} />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Fake Jobs Detected</p>
-                    <p className="text-2xl font-bold text-red-600">{stats.fakeJobsDetected}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center space-x-3">
-                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <FileText className="text-blue-600" size={20} />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Total Reports</p>
-                    <p className="text-2xl font-bold text-blue-600">{reports.length}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center space-x-3">
-                  <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                    <Shield className="text-green-600" size={20} />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Platform Safety</p>
-                    <p className="text-2xl font-bold text-green-600">{stats.successRate}%</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center space-x-3">
-                  <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-                    <TrendingDown className="text-purple-600" size={20} />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">This Week</p>
-                    <p className="text-2xl font-bold text-purple-600">{stats.weeklyStats.fakeJobsDetected}</p>
-                    <p className="text-xs text-gray-500">-8% from last week</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
         <Tabs defaultValue="reports" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="reports">Community Reports</TabsTrigger>
-            <TabsTrigger value="wall-of-shame">Wall of Shame</TabsTrigger>
+          <TabsList className="bg-[#1F2833] border border-[#2E3A47] p-1">
+            <TabsTrigger 
+              value="reports"
+              className="data-[state=active]:bg-[#00AEEF] data-[state=active]:text-white data-[state=inactive]:text-[#C5C6C7]"
+            >
+              Reported Jobs
+            </TabsTrigger>
+            <TabsTrigger 
+              value="suspicious"
+              className="data-[state=active]:bg-[#00AEEF] data-[state=active]:text-white data-[state=inactive]:text-[#C5C6C7]"
+            >
+              Suspicious Jobs
+            </TabsTrigger>
+            <TabsTrigger 
+              value="stats"
+              className="data-[state=active]:bg-[#00AEEF] data-[state=active]:text-white data-[state=inactive]:text-[#C5C6C7]"
+            >
+              Statistics
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="reports" className="space-y-6">
-            {/* Filters */}
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex flex-col md:flex-row gap-4">
-                  <Input
-                    placeholder="Search reports by job title or company..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="md:w-80"
-                  />
-                  
-                  <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="md:w-48">
-                      <SelectValue placeholder="All Statuses" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Statuses</SelectItem>
-                      <SelectItem value="pending">Under Review</SelectItem>
-                      <SelectItem value="verified">Confirmed Fake</SelectItem>
-                      <SelectItem value="dismissed">Dismissed</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  <Select value={reasonFilter} onValueChange={setReasonFilter}>
-                    <SelectTrigger className="md:w-60">
-                      <SelectValue placeholder="All Reasons" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Reasons</SelectItem>
-                      {reportReasons.map((reason) => (
-                        <SelectItem key={reason} value={reason}>
-                          {reason}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+            <Card className="bg-[#1F2833] border-[#2E3A47]">
+              <CardHeader>
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                  <CardTitle className="text-lg text-white">Reported Job Listings</CardTitle>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <Input
+                      placeholder="Search reports..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="md:w-64 bg-[#0B0C10] border-[#2E3A47] text-white placeholder-[#5D6B7E] focus:border-[#00AEEF] focus:ring-1 focus:ring-[#00AEEF]/50"
+                    />
+                    <Select value={statusFilter} onValueChange={setStatusFilter}>
+                      <SelectTrigger className="w-full md:w-40 bg-[#0B0C10] border-[#2E3A47] text-white hover:border-[#00AEEF]/50 focus:ring-1 focus:ring-[#00AEEF]/50">
+                        <SelectValue placeholder="Status" className="text-left" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-[#1F2833] border-[#2E3A47] text-white">
+                        <SelectItem value="all" className="hover:bg-[#00AEEF]/10 focus:bg-[#00AEEF]/20">All Statuses</SelectItem>
+                        <SelectItem value="pending" className="hover:bg-[#00AEEF]/10 focus:bg-[#00AEEF]/20">Under Review</SelectItem>
+                        <SelectItem value="verified" className="hover:bg-[#00AEEF]/10 focus:bg-[#00AEEF]/20">Confirmed Fake</SelectItem>
+                        <SelectItem value="dismissed" className="hover:bg-[#00AEEF]/10 focus:bg-[#00AEEF]/20">Dismissed</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Select value={reasonFilter} onValueChange={setReasonFilter}>
+                      <SelectTrigger className="w-full md:w-64 bg-[#0B0C10] border-[#2E3A47] text-white hover:border-[#00AEEF]/50 focus:ring-1 focus:ring-[#00AEEF]/50">
+                        <SelectValue placeholder="Report Reason" className="text-left" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-[#1F2833] border-[#2E3A47] text-white">
+                        <SelectItem value="all" className="hover:bg-[#00AEEF]/10 focus:bg-[#00AEEF]/20">All Reasons</SelectItem>
+                        {reportReasons.map((reason) => (
+                          <SelectItem 
+                            key={reason} 
+                            value={reason}
+                            className="hover:bg-[#00AEEF]/10 focus:bg-[#00AEEF]/20"
+                          >
+                            {reason}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
+              </CardHeader>
 
-            {/* Reports List */}
-            {reportsLoading || jobsLoading ? (
-              <div className="space-y-4">
-                {[...Array(5)].map((_, i) => (
-                  <Card key={i}>
-                    <CardContent className="p-6">
-                      <div className="flex space-x-4">
-                        <Skeleton className="w-12 h-12 rounded-lg" />
-                        <div className="flex-1 space-y-2">
-                          <Skeleton className="h-6 w-1/3" />
-                          <Skeleton className="h-4 w-1/2" />
-                          <Skeleton className="h-16 w-full" />
+              {/* Reports List */}
+              {reportsLoading || jobsLoading ? (
+                <div className="space-y-4">
+                  {[...Array(5)].map((_, i) => (
+                    <Card key={i} className="bg-[#1F2833] border-[#2E3A47]">
+                      <CardContent className="p-6">
+                        <div className="flex space-x-4">
+                          <Skeleton className="w-12 h-12 rounded-lg" />
+                          <div className="flex-1 space-y-2">
+                            <Skeleton className="h-6 w-1/3" />
+                            <Skeleton className="h-4 w-1/2" />
+                            <Skeleton className="h-16 w-full" />
+                          </div>
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            ) : filteredReports.length === 0 ? (
-              <Card>
-                <CardContent className="p-12 text-center">
-                  <AlertTriangle className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-                  <p className="text-gray-500">No reports found matching your criteria.</p>
-                  <p className="text-sm text-gray-400 mt-2">Try adjusting your search or filters.</p>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="space-y-4">
-                {filteredReports.map((reportedJob: any) => (
-                  <Card key={reportedJob.report.id} className="hover:shadow-md transition-shadow">
-                    <CardContent className="p-6">
-                      <div className="flex justify-between items-start mb-4">
-                        <div className="flex items-start space-x-4 flex-1">
-                          <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                            <Building className="text-gray-600" size={20} />
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {filteredReports.length === 0 ? (
+                    <div className="text-center p-12">
+                      <AlertTriangle className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                      <p>No reported jobs found.</p>
+                    </div>
+                  ) : (
+                    filteredReports.map((reportedJob: any) => (
+                      <Card key={reportedJob.report.id} className="hover:shadow-md transition-shadow">
+                        <CardContent className="p-6">
+                          <div className="flex justify-between items-start">
+                            <div className="flex items-start space-x-4 flex-1">
+                              <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                <Building className="h-6 w-6 text-gray-400" />
+                              </div>
+                              <div>
+                                <h3 className="font-medium text-gray-900">{reportedJob.title}</h3>
+                                <div className="flex items-center space-x-4 text-sm text-gray-500 mt-1">
+                                  <p>{reportedJob.company?.name || 'No company'}</p>
+                                  {reportedJob.location && (
+                                    <span className="flex items-center">
+                                      <MapPin className="w-4 h-4 mr-1" />
+                                      {reportedJob.location}
+                                    </span>
+                                  )}
+                                  <span className="flex items-center">
+                                    <Calendar className="w-4 h-4 mr-1" />
+                                    Reported {formatDate(reportedJob.report.reportedAt)}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            <Button variant="outline" size="sm" className="border-[#2E3A47] text-[#C5C6C7] hover:bg-[#00AEEF]/10 hover:border-[#00AEEF]/50 hover:text-white">
+                              <Eye className="h-4 w-4 mr-2" /> View
+                            </Button>
                           </div>
                           
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center space-x-2 mb-2 flex-wrap">
-                              <h3 className="text-lg font-semibold text-gray-900">{reportedJob.title}</h3>
-                              {getJobStatusBadge(reportedJob.status)}
-                              {getStatusBadge(reportedJob.report.status)}
-                            </div>
-                            
-                            <div className="flex items-center text-sm text-gray-600 space-x-4 mb-2 flex-wrap">
-                              <span className="flex items-center">
-                                <Building className="w-4 h-4 mr-1" />
-                                {reportedJob.company?.name || "Unknown Company"}
-                              </span>
-                              <span className="flex items-center">
-                                <MapPin className="w-4 h-4 mr-1" />
-                                {reportedJob.location}
-                              </span>
-                              <span className="flex items-center">
-                                <Calendar className="w-4 h-4 mr-1" />
-                                Reported {formatDate(reportedJob.report.reportedAt)}
-                              </span>
-                            </div>
-                            
-                            <div className="bg-red-50 border border-red-200 rounded-md p-3 mb-3">
+                          <div className="mt-4 space-y-2">
+                            <div className="bg-red-50 border border-red-200 rounded-md p-3">
                               <div className="flex items-start space-x-2">
                                 <AlertTriangle className="text-red-500 flex-shrink-0 mt-0.5" size={16} />
                                 <div>
@@ -311,44 +304,33 @@ export default function Reports() {
                                 </div>
                               </div>
                             </div>
-                            
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center space-x-4">
-                                {reportedJob.salary && (
-                                  <span className="text-lg font-semibold text-gray-900 flex items-center">
-                                    <DollarSign className="w-4 h-4 mr-1" />
-                                    {reportedJob.salary}
-                                  </span>
-                                )}
-                                <span className="text-sm text-gray-600">
-                                  Report #{reportedJob.reportCount || 1}
-                                </span>
-                              </div>
+                            <div className="flex items-center text-sm text-gray-600 space-x-4">
+                              <p className="flex items-center">
+                                <DollarSign className="w-4 h-4 mr-1 text-gray-400" />
+                                {reportedJob.salary || 'Not specified'}
+                              </p>
+                              <p className="flex items-center">
+                                <MapPin className="w-4 h-4 mr-1 text-gray-400" />
+                                {reportedJob.location || 'Remote'}
+                              </p>
                             </div>
                           </div>
-                        </div>
-                        
-                        <div className="flex items-center space-x-2 ml-4 flex-shrink-0">
-                          <Button variant="outline" size="sm">
-                            <Eye className="w-4 h-4 mr-2" />
-                            View Details
+                          <Button variant="outline" size="sm" className="mt-4 border-[#2E3A47] text-[#C5C6C7] hover:bg-[#00AEEF]/10 hover:border-[#00AEEF]/50 hover:text-white">
+                            <Eye className="h-4 w-4 mr-2" /> View Details
                           </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
+                        </CardContent>
+                      </Card>
+                    ))
+                  )}
+                </div>
+              )}
+            </Card>
           </TabsContent>
 
-          <TabsContent value="wall-of-shame" className="space-y-6">
-            <Card>
+          <TabsContent value="suspicious" className="space-y-6">
+            <Card className="bg-[#1F2833] border-[#2E3A47]">
               <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <AlertTriangle className="h-5 w-5 text-red-500" />
-                  <span>Wall of Shame - Confirmed Fake Jobs</span>
-                </CardTitle>
+                <CardTitle className="text-lg text-white">Wall of Shame - Confirmed Fake Jobs</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-gray-600 mb-6">
@@ -369,21 +351,55 @@ export default function Reports() {
                       
                       return (
                         <Card key={job.id} className={`${getJobStatusColor(job.status)}`}>
+                          <div className="mt-4 pt-4 border-t border-[#2E3A47]">
+                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                              <div className="space-y-2">
+                                <div className="flex flex-wrap items-center gap-x-2">
+                                  <span className="text-sm font-medium text-[#C5C6C7]">Reported:</span>
+                                  <span className="text-sm text-[#8F9BB3]">{formatDate(reportedJob.report.date)}</span>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-x-2">
+                                  <span className="text-sm font-medium text-[#C5C6C7]">Reason:</span>
+                                  <span className="text-sm text-[#8F9BB3]">{reportedJob.report.reason}</span>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-x-2">
+                                  <span className="text-sm font-medium text-[#C5C6C7]">Status:</span>
+                                  {getStatusBadge(reportedJob.report.status)}
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  className="w-full sm:w-auto border-[#2E3A47] text-[#C5C6C7] hover:bg-[#2E3A47] hover:text-white"
+                                >
+                                  Dismiss
+                                </Button>
+                                <Button 
+                                  variant="destructive" 
+                                  size="sm" 
+                                  className="w-full sm:w-auto bg-red-500/20 text-red-400 border-red-500/30 hover:bg-red-500/30 hover:text-white"
+                                >
+                                  Confirm
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
                           <CardContent className="p-4">
                             <div className="flex justify-between items-start">
                               <div className="flex-1">
                                 <div className="flex items-center space-x-2 mb-2">
-                                  <h4 className="font-medium text-gray-900">{job.title}</h4>
+                                  <h4 className="font-medium text-white">{job.title}</h4>
                                   {getJobStatusBadge(job.status)}
                                 </div>
                                 
-                                <div className="flex items-center text-sm text-gray-600 space-x-4 mb-2">
+                                <div className="flex items-center text-sm text-[#C5C6C7] space-x-4 mb-2">
                                   <span>{company?.name || "Unknown Company"}</span>
                                   <span>{job.location}</span>
                                   <span className="text-red-600">{job.reportCount} reports</span>
                                 </div>
                                 
-                                <p className="text-sm text-gray-700 line-clamp-2">
+                                <p className="text-sm text-[#8F9BB3] line-clamp-2">
                                   {job.description}
                                 </p>
                               </div>
@@ -406,9 +422,12 @@ export default function Reports() {
         </Tabs>
 
         {/* Reporting Guidelines */}
-        <Card className="mt-8">
+        <Card className="mt-8 bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/20 border-2 border-blue-200 dark:border-blue-700/50 shadow-lg">
           <CardHeader>
-            <CardTitle>How to Report Suspicious Jobs</CardTitle>
+            <CardTitle className="text-2xl font-bold text-blue-800 dark:text-blue-200 flex items-center gap-2">
+              <AlertTriangle className="h-6 w-6" />
+              How to Report Suspicious Jobs
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -437,7 +456,14 @@ export default function Reports() {
             </div>
           </CardContent>
         </Card>
-      </div>
+      </main>
+      
+      {/* Report Job Modal */}
+      <ReportJobForm
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        userId={user?.id || ''}
+      />
     </div>
   );
 }

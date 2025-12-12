@@ -3,232 +3,265 @@ import { useQuery } from "@tanstack/react-query";
 import Header from "@/components/header";
 import FilterSidebar from "@/components/filter-sidebar";
 import RightSidebar from "@/components/right-sidebar";
-import JobCard from "@/components/job-card";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Skeleton } from "@/components/ui/skeleton";
-import { List, Grid3x3, AlertTriangle } from "lucide-react";
-import { useIsMobile } from "@/hooks/use-mobile";
-import { Link } from "wouter";
+import JobCard from "@/components/job-card";
+import ThreeBackground from "@/components/ThreeBackground";
+
+interface Job {
+  id: string;
+  title: string;
+  company_name: string;
+  company_logo: string;
+  url: string;
+  location?: string;
+  salary?: string;
+  job_type?: string;
+  experience_level?: string;
+  company_size?: string;
+  trust_score?: number;
+  status?: string;
+  [key: string]: any;
+}
+
+interface Filters {
+  search?: string;
+  location?: string;
+  salary?: string;
+  jobType?: string[];
+  experienceLevel?: string[];
+  companySize?: string[];
+  trustScoreMin?: number;
+  status?: string[];
+}
 
 export default function Home() {
-  const [filters, setFilters] = useState<any>({});
-  const [sortBy, setSortBy] = useState("recent");
-  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
-  const isMobile = useIsMobile();
+  const [savedJobs, setSavedJobs] = useState<Job[]>([]);
+  const [filters, setFilters] = useState<Filters>({});
 
-  const { data: jobs = [], isLoading } = useQuery({
-    queryKey: ["/api/jobs", filters],
-    queryFn: () => {
-      const params = new URLSearchParams();
-      
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          if (Array.isArray(value)) {
-            params.append(key, value.join(','));
-          } else {
-            params.append(key, String(value));
-          }
-        }
-      });
-      
-      return fetch(`/api/jobs?${params.toString()}`).then(res => res.json());
+  const { data: jobs = [], isLoading } = useQuery<Job[]>({
+    queryKey: ["jobs"],
+    queryFn: async () => {
+      const res = await fetch("/remoteok_jobs.json");
+      return res.json();
     },
   });
 
-  const { data: savedJobs = [] } = useQuery({
-    queryKey: ["/api/saved-jobs"],
-    queryFn: () => fetch("/api/saved-jobs?userId=user1").then(res => res.json()),
+  const getJobId = (job: any) => {
+    return (
+      job.id ||
+      `${job.title || job.Title || ""}-${job.company_name || job.Company || ""}`
+        .replace(/\s+/g, "-")
+        .toLowerCase()
+    );
+  };
+
+  const normalizeJob = (job: any): Job => ({
+    id: getJobId(job),
+    title: job.title || job.Title || job.position || "Untitled",
+    company_name: job.company_name || job.Company || job.company || "Unknown",
+    company_logo: job.company_logo || job.logo || "",
+    url: job.company_url || job.url || job.apply_url || "#",
+    location: job.location || job.Location || "",
+    salary: job.salary || job.Salary || "",
+    job_type: job.job_type || job.Job_Type || job.type || "",
+    experience_level: job.experience_level || job.Experience_Level || "",
+    company_size: job.company_size || job.Company_Size || "",
+    trust_score: job.trust_score || 0,
+    status: job.status || "pending",
+    ...job,
   });
 
-  const savedJobIds = new Set(savedJobs.map((job: any) => job.id));
-
-  const sortedJobs = [...jobs].sort((a, b) => {
-    switch (sortBy) {
-      case "salary":
-        return b.company.trustScore - a.company.trustScore;
-      case "trust":
-        return b.company.trustScore - a.company.trustScore;
-      case "recent":
-      default:
-        return new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime();
+  // Apply filters to jobs
+  const filteredJobs = jobs.filter((job: Job) => {
+    const normalizedJob = normalizeJob(job);
+    
+    // Search filter
+    if (filters.search) {
+      const searchLower = filters.search.toLowerCase();
+      const matchesSearch = 
+        normalizedJob.title.toLowerCase().includes(searchLower) ||
+        normalizedJob.company_name.toLowerCase().includes(searchLower) ||
+        (normalizedJob.description && normalizedJob.description.toLowerCase().includes(searchLower));
+      
+      if (!matchesSearch) return false;
     }
+
+    // Location filter
+    if (filters.location && normalizedJob.location) {
+      const locationLower = filters.location.toLowerCase();
+      if (!normalizedJob.location.toLowerCase().includes(locationLower)) {
+        return false;
+      }
+    }
+
+    // Job type filter
+    if (filters.jobType && filters.jobType.length > 0 && normalizedJob.job_type) {
+      if (!filters.jobType.includes(normalizedJob.job_type)) {
+        return false;
+      }
+    }
+
+    // Experience level filter
+    if (filters.experienceLevel && filters.experienceLevel.length > 0 && normalizedJob.experience_level) {
+      const jobExperienceLevel = normalizedJob.experience_level?.toLowerCase() || '';
+      if (!filters.experienceLevel.some(level => 
+        jobExperienceLevel.includes(level.toLowerCase())
+      )) {
+        return false;
+      }
+    }
+
+    // Company size filter
+    if (filters.companySize && filters.companySize.length > 0 && normalizedJob.company_size) {
+      if (!filters.companySize.includes(normalizedJob.company_size)) {
+        return false;
+      }
+    }
+
+    // Trust score filter
+    if (filters.trustScoreMin && normalizedJob.trust_score) {
+      if (normalizedJob.trust_score < filters.trustScoreMin) {
+        return false;
+      }
+    }
+
+    // Status filter
+    if (filters.status && normalizedJob.status) {
+      if (!filters.status.includes(normalizedJob.status)) {
+        return false;
+      }
+    }
+
+    return true;
   });
 
-  const suspiciousJobsCount = jobs.filter((job: any) => job.status === "suspicious").length;
+  const toggleSaveJob = (job: any) => {
+    const jobId = getJobId(job);
+    setSavedJobs((prev) => {
+      const exists = prev.some((saved) => getJobId(saved) === jobId);
+      if (exists) {
+        return prev.filter((saved) => getJobId(saved) !== jobId);
+      }
+      return [...prev, normalizeJob(job)];
+    });
+  };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Header />
-      
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="flex flex-col lg:flex-row gap-6">
-          {/* Filter Sidebar - Hidden on mobile */}
-          {!isMobile && (
-            <div className="lg:w-80">
-              <FilterSidebar onFiltersChange={setFilters} />
+    <div className="min-h-screen relative bg-black">
+      <ThreeBackground />
+      <div className="relative z-10 bg-black text-white">
+        <Header />
+        <div className="grid grid-cols-12 gap-6 px-6 py-6 max-w-7xl mx-auto bg-black">
+          {/* Left Sidebar */}
+          <aside className="col-span-3 bg-gradient-to-b from-[#0F172A] to-[#1E293B] shadow-lg rounded-xl overflow-hidden border border-[#334155] sticky top-20 h-[calc(100vh-6rem)] flex flex-col">
+            <div className="p-6 border-b border-[#334155]">
+              <h2 className="text-lg font-semibold text-white mb-2">
+                Filters
+              </h2>
+              {Object.keys(filters).length > 0 && (
+                <button 
+                  onClick={() => setFilters({})}
+                  className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                >
+                  Clear all filters
+                </button>
+              )}
             </div>
-          )}
-
-          {/* Main Content */}
-          <main className="flex-1 space-y-6">
-            {/* Search Results Header */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Job Search Results</h1>
-                <p className="text-gray-600 mt-1">
-                  Found {jobs.length.toLocaleString()} jobs matching your criteria
-                </p>
-              </div>
-              
-              <div className="flex items-center space-x-4">
-                <Select value={sortBy} onValueChange={setSortBy}>
-                  <SelectTrigger className="w-40">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="recent">Most Recent</SelectItem>
-                    <SelectItem value="salary">Highest Salary</SelectItem>
-                    <SelectItem value="trust">Trust Score</SelectItem>
-                  </SelectContent>
-                </Select>
-                
-                <div className="flex rounded-md border border-gray-300">
-                  <Button
-                    variant={viewMode === "list" ? "default" : "ghost"}
-                    size="sm"
-                    onClick={() => setViewMode("list")}
-                    className="rounded-r-none"
-                  >
-                    <List size={16} />
-                  </Button>
-                  <Button
-                    variant={viewMode === "grid" ? "default" : "ghost"}
-                    size="sm"
-                    onClick={() => setViewMode("grid")}
-                    className="rounded-l-none"
-                  >
-                    <Grid3x3 size={16} />
-                  </Button>
-                </div>
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+              <div className="p-6 pt-4">
+                <FilterSidebar onFiltersChange={(newFilters) => setFilters(newFilters)} />
               </div>
             </div>
+          </aside>
 
-            {/* Fake Job Alert */}
-            {suspiciousJobsCount > 0 && (
-              <Alert className="border-amber-200 bg-amber-50">
-                <AlertTriangle className="h-4 w-4 text-amber-500" />
-                <AlertDescription className="text-amber-800">
-                  We've detected {suspiciousJobsCount} suspicious job posting{suspiciousJobsCount !== 1 ? 's' : ''} in your results.{' '}
-                  <Link href="/reports" className="underline font-medium">
-                    View details
-                  </Link>
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {/* Job Listings */}
+          {/* Job Listings */}
+          <main className="col-span-6 space-y-6">
             {isLoading ? (
-              <div className="space-y-4">
+              <div className="flex flex-col space-y-4">
                 {[...Array(5)].map((_, i) => (
-                  <Card key={i}>
-                    <CardContent className="p-6">
-                      <div className="flex space-x-4">
-                        <Skeleton className="w-12 h-12 rounded-lg" />
-                        <div className="flex-1 space-y-2">
-                          <Skeleton className="h-6 w-1/3" />
-                          <Skeleton className="h-4 w-1/2" />
-                          <Skeleton className="h-16 w-full" />
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            ) : jobs.length === 0 ? (
-              <Card>
-                <CardContent className="p-12 text-center">
-                  <p className="text-gray-500">No jobs found matching your criteria.</p>
-                  <p className="text-sm text-gray-400 mt-2">Try adjusting your filters or search terms.</p>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 gap-4" : "space-y-4"}>
-                {sortedJobs.map((job: any) => (
-                  <JobCard
-                    key={job.id}
-                    job={job}
-                    isSaved={savedJobIds.has(job.id)}
-                    userId="user1"
+                  <div
+                    key={i}
+                    className="h-28 bg-[#1E293B] rounded-lg animate-pulse border border-[#334155]"
                   />
                 ))}
               </div>
-            )}
-
-            {/* Pagination */}
-            {jobs.length > 0 && (
-              <div className="flex items-center justify-between">
-                <div className="text-sm text-gray-700">
-                  Showing <span className="font-medium">1</span> to{' '}
-                  <span className="font-medium">{Math.min(10, jobs.length)}</span> of{' '}
-                  <span className="font-medium">{jobs.length}</span> results
-                </div>
-                
-                <div className="flex items-center space-x-2">
-                  <Button variant="outline" size="sm" disabled>
-                    Previous
-                  </Button>
-                  <Button size="sm">1</Button>
-                  <Button variant="outline" size="sm">2</Button>
-                  <Button variant="outline" size="sm">3</Button>
-                  <span className="px-3 py-2 text-gray-500">...</span>
-                  <Button variant="outline" size="sm">45</Button>
-                  <Button variant="outline" size="sm">
-                    Next
-                  </Button>
-                </div>
+            ) : filteredJobs.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-[#E2E8F0] text-lg font-medium mb-4">No jobs found matching your filters.</p>
+                <Button 
+                  variant="outline" 
+                  className="text-[#00AEEF] border-[#00AEEF] hover:bg-[#00AEEF]/10"
+                  onClick={() => setFilters({})}
+                >
+                  Clear all filters
+                </Button>
               </div>
+            ) : (
+              filteredJobs.map((job: Job, index: number) => {
+                const normalizedJob = normalizeJob(job);
+                return (
+                  <div key={getJobId(normalizedJob)}>
+                    <div 
+                      className="transform transition hover:scale-[1.02] hover:shadow-xl rounded-lg border border-transparent hover:border-[#3B82F6]/30"
+                      style={{ animation: `fadeInUp 0.3s ease forwards`, animationDelay: `${index * 80}ms` }}
+                    >
+                      <JobCard
+                        job={normalizedJob}
+                        isSaved={savedJobs.some(
+                          (saved) => getJobId(saved) === getJobId(normalizedJob)
+                        )}
+                        onSaveToggle={() => toggleSaveJob(normalizedJob)}
+                      />
+                    </div>
+                  </div>
+                );
+              })
             )}
           </main>
 
-          {/* Right Sidebar - Hidden on mobile */}
-          {!isMobile && (
-            <div className="lg:w-80">
-              <RightSidebar />
+          {/* Right Sidebar */}
+          <aside className="col-span-3 sticky top-20 h-fit space-y-6">
+            <div className="bg-[#0B0C10] shadow-lg rounded-xl p-6 border border-[#2E3A47]">
+              <div className="flex items-center justify-between mb-4 pb-3 border-b border-[#2E3A47]">
+                <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00AEEF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+                  </svg>
+                  Saved Jobs
+                </h2>
+                <span className="text-sm font-medium bg-[#1F2833] text-[#C5C6C7] px-2.5 py-0.5 rounded-full border border-[#2E3A47]">
+                  {savedJobs.length}
+                </span>
+              </div>
+              <RightSidebar 
+                savedJobs={savedJobs} 
+                onRemoveJob={(job) => {
+                  setSavedJobs(prev => 
+                    prev.filter(savedJob => getJobId(savedJob) !== getJobId(job))
+                  );
+                }}
+              />
             </div>
-          )}
+          </aside>
         </div>
-      </div>
 
-      {/* Mobile Navigation */}
-      {isMobile && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-40">
-          <div className="grid grid-cols-5 gap-1">
-            <Link href="/" className="flex flex-col items-center justify-center py-2 text-primary">
-              <i className="fas fa-search text-lg"></i>
-              <span className="text-xs mt-1">Jobs</span>
-            </Link>
-            <Link href="/courses" className="flex flex-col items-center justify-center py-2 text-gray-600">
-              <i className="fas fa-graduation-cap text-lg"></i>
-              <span className="text-xs mt-1">Courses</span>
-            </Link>
-            <Link href="/companies" className="flex flex-col items-center justify-center py-2 text-gray-600">
-              <i className="fas fa-building text-lg"></i>
-              <span className="text-xs mt-1">Companies</span>
-            </Link>
-            <Link href="/reports" className="flex flex-col items-center justify-center py-2 text-gray-600">
-              <i className="fas fa-exclamation-triangle text-lg"></i>
-              <span className="text-xs mt-1">Reports</span>
-            </Link>
-            <button className="flex flex-col items-center justify-center py-2 text-gray-600">
-              <i className="fas fa-user text-lg"></i>
-              <span className="text-xs mt-1">Profile</span>
-            </button>
-          </div>
-        </div>
-      )}
+        {/* Keyframe animations */}
+        <style>{`
+          @keyframes fadeInUp {
+            from {
+              opacity: 0;
+              transform: translateY(10px);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0);
+            }
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
+      </div>
     </div>
   );
 }

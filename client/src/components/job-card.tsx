@@ -1,238 +1,356 @@
-import { useState } from "react";
-import { Star, Clock, GraduationCap, Code, Bookmark, ExternalLink, AlertTriangle } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
-import type { JobWithCompany } from "@shared/schema";
-import ReportModal from "./report-modal";
+import { ExternalLink, Bookmark, MapPin, Briefcase, Clock, ArrowRight } from "lucide-react";
 
 interface JobCardProps {
-  job: JobWithCompany;
-  isSaved?: boolean;
-  userId?: string;
+  job: {
+    id?: string;
+    company_name: string;
+    company_logo?: string;
+    title: string;
+    location?: string;
+    tags?: string[];
+    url: string;
+    experienceLevel?: string;
+  };
+  isSaved: boolean;
+  onSaveToggle: () => void;
 }
 
-const trustIndicators = {
-  verified: { label: "✅ Verified", className: "trust-indicator-verified" },
-  suspicious: { label: "⚠️ Suspicious", className: "trust-indicator-suspicious" },
-  pending: { label: "Pending Review", className: "trust-indicator-pending" },
-  fake: { label: "❌ Fake", className: "trust-indicator-fake" },
+// Helper function to get initials from company name
+const getInitials = (name: string) => {
+  if (!name) return '??';
+  return name
+    .split(' ')
+    .map(word => word[0])
+    .join('')
+    .toUpperCase()
+    .substring(0, 2);
 };
 
-const jobTypeLabels = {
-  "full-time": "Full-time",
-  "part-time": "Part-time",
-  remote: "Remote",
-  internship: "Internship",
-  hybrid: "Hybrid",
-  "on-site": "On-site",
-};
-
-export default function JobCard({ job, isSaved = false, userId = "user1" }: JobCardProps) {
-  const [showReportModal, setShowReportModal] = useState(false);
-  const [isJobSaved, setIsJobSaved] = useState(isSaved);
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-
-  const saveJobMutation = useMutation({
-    mutationFn: async () => {
-      if (isJobSaved) {
-        return apiRequest("DELETE", "/api/saved-jobs", { userId, jobId: job.id });
-      } else {
-        return apiRequest("POST", "/api/saved-jobs", { userId, jobId: job.id });
-      }
-    },
-    onSuccess: () => {
-      setIsJobSaved(!isJobSaved);
-      toast({
-        title: isJobSaved ? "Job unsaved" : "Job saved",
-        description: isJobSaved ? "Job removed from saved list" : "Job added to saved list",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/saved-jobs"] });
-    },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "Failed to update saved job",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const trustIndicator = trustIndicators[job.status as keyof typeof trustIndicators] || trustIndicators.pending;
-  const jobTypeLabel = jobTypeLabels[job.jobType as keyof typeof jobTypeLabels] || job.jobType;
+// Map company names to local image paths
+const getLocalLogoPath = (companyName: string): string | null => {
+  if (!companyName) return null;
   
-  const getJobTypeColor = (type: string) => {
-    switch (type) {
-      case "remote": return "bg-blue-100 text-blue-800";
-      case "hybrid": return "bg-purple-100 text-purple-800";
-      case "on-site": return "bg-indigo-100 text-indigo-800";
-      case "internship": return "bg-orange-100 text-orange-800";
-      default: return "bg-gray-100 text-gray-800";
+  // Normalize company name for filename
+  const normalized = companyName
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+    
+  // Check if we have a local image for this company
+  const imageExtensions = ['.png', '.jpg', '.jpeg', '.webp'];
+  for (const ext of imageExtensions) {
+    const imagePath = `/images/company-logos/${normalized}${ext}`;
+    // This is a simplified check - in a real app, you'd want to verify the file exists
+    return imagePath;
+  }
+  
+  return null;
+};
+
+// Custom hook for image loading with fallbacks
+const useImageWithFallback = (src: string | undefined, companyName: string) => {
+  const [imgSrc, setImgSrc] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const localImagePath = companyName ? getLocalLogoPath(companyName) : null;
+
+  useEffect(() => {
+    if (!src) {
+      // Try to use local image if no source provided
+      if (localImagePath) {
+        setImgSrc(localImagePath);
+        setError(false);
+      } else {
+        setError(true);
+      }
+      setIsLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+    const controller = new AbortController();
+    const signal = controller.signal;
+
+    const loadImage = async () => {
+      try {
+        // Try direct load first
+        const img = new Image();
+        
+        // Create a promise to handle image loading
+        const loadPromise = new Promise((resolve, reject) => {
+          img.onload = () => resolve(true);
+          img.onerror = () => reject(new Error('Image failed to load'));
+          img.src = src;
+        });
+
+        // Set a timeout for the image load
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Image load timeout')), 3000)
+        );
+
+        // Race the load against the timeout
+        await Promise.race([loadPromise, timeoutPromise]);
+        
+        if (isMounted) {
+          setImgSrc(src);
+          setError(false);
+        }
+      } catch (err) {
+        if (isMounted) {
+          // If direct load fails, try with a proxy
+          try {
+            const proxyUrl = `https://images.weserv.nl/?url=${encodeURIComponent(src)}&w=100&h=100&fit=cover`;
+            const img = new Image();
+            
+            img.onload = () => {
+              if (isMounted) {
+                setImgSrc(proxyUrl);
+                setError(false);
+              }
+            };
+            
+            img.onerror = () => {
+              if (isMounted) setError(true);
+            };
+            
+            img.src = proxyUrl;
+            return;
+          } catch (proxyErr) {
+            if (isMounted) setError(true);
+          }
+        }
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    };
+
+    loadImage();
+
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
+  }, [src]);
+
+  // Return the appropriate source or fallback
+  if (isLoading) return { src: null, isLoading: true, error: false };
+  if (error || !imgSrc) {
+    // First try local image
+    if (localImagePath) {
+      return { src: localImagePath, isLoading: false, error: false };
+    }
+    
+    // Then try to get a fallback from a placeholder service
+    try {
+      const initials = getInitials(companyName);
+      const placeholderUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(initials)}&background=3B82F6&color=fff&size=128`;
+      return { src: placeholderUrl, isLoading: false, error: true };
+    } catch (e) {
+      // If all else fails, return null
+      return { src: null, isLoading: false, error: true };
+    }
+  }
+  
+  return { src: imgSrc, isLoading: false, error: false };
+};
+
+const JobCard: React.FC<JobCardProps> = ({ job, isSaved, onSaveToggle }) => {
+  const { src: logoUrl, isLoading } = useImageWithFallback(job.company_logo, job.company_name);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [isHovered, setIsHovered] = useState(false);
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!cardRef.current) return;
+    
+    const rect = cardRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    
+    const rotateX = (y - centerY) / 30;
+    const rotateY = (centerX - x) / 30;
+    
+    cardRef.current.style.setProperty('--rotate-x', `${rotateX}deg`);
+    cardRef.current.style.setProperty('--rotate-y', `${rotateY}deg`);
+    
+    // Glow effect
+    const glowX = (x / rect.width) * 100;
+    const glowY = (y / rect.height) * 100;
+    cardRef.current.style.setProperty('--glow-x', `${glowX}%`);
+    cardRef.current.style.setProperty('--glow-y', `${glowY}%`);
+  };
+  
+  const handleMouseLeave = () => {
+    if (cardRef.current) {
+      cardRef.current.style.setProperty('--rotate-x', '0deg');
+      cardRef.current.style.setProperty('--rotate-y', '0deg');
+      cardRef.current.style.setProperty('--glow-opacity', '0');
+      setIsHovered(false);
+    }
+  };
+  
+  const handleMouseEnter = () => {
+    setIsHovered(true);
+    if (cardRef.current) {
+      cardRef.current.style.setProperty('--glow-opacity', '0.2');
     }
   };
 
-  const formatPostedDate = (date: Date | null) => {
-    if (!date) return "Unknown date";
-    const now = new Date();
-    const diffTime = Math.abs(now.getTime() - new Date(date).getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
-    if (diffDays === 1) return "1 day ago";
-    if (diffDays < 7) return `${diffDays} days ago`;
-    if (diffDays < 30) return `${Math.ceil(diffDays / 7)} weeks ago`;
-    return `${Math.ceil(diffDays / 30)} months ago`;
-  };
-
   return (
-    <>
-      <Card className={`hover:shadow-md transition-shadow ${job.status === "suspicious" ? "border-amber-200" : ""}`}>
-        <CardContent className="p-6">
-          <div className="flex justify-between items-start mb-4">
-            <div className="flex items-start space-x-4 flex-1">
-              {/* Company logo */}
-              <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                <i className={`${job.company.logo} text-xl`} style={{ color: job.company.logo?.includes('google') ? '#4285f4' : job.company.logo?.includes('microsoft') ? '#0078d4' : '#666' }}></i>
+    <div 
+      ref={cardRef}
+      className="relative group h-full transition-transform duration-500 ease-out will-change-transform"
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      onMouseEnter={handleMouseEnter}
+      style={{
+        '--glow-opacity': '0',
+        '--glow-x': '50%',
+        '--glow-y': '50%',
+        '--rotate-x': '0deg',
+        '--rotate-y': '0deg',
+      } as React.CSSProperties}
+    >
+      {/* Glow effect */}
+      <div 
+        className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-0"
+        style={{
+          background: 'radial-gradient(circle at var(--glow-x) var(--glow-y), rgba(59, 130, 246, 0.3), transparent 50%)',
+          opacity: 'var(--glow-opacity)',
+        }}
+      />
+      
+      <Card 
+        className="w-full h-full bg-gradient-to-br from-[#0F172A] to-[#1E293B] border border-[#334155] relative z-10 overflow-hidden transition-all duration-300"
+        style={{
+          transform: 'perspective(1000px) rotateX(var(--rotate-x)) rotateY(var(--rotate-y))',
+          boxShadow: isHovered 
+            ? '0 25px 50px -12px rgba(59, 130, 246, 0.3), 0 0 30px rgba(59, 130, 246, 0.2)'
+            : '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+          transition: 'all 0.3s ease-out'
+        }}
+      >
+        <CardHeader className="flex flex-row items-start gap-4 relative z-10">
+          <div className="w-16 h-16 flex-shrink-0 flex items-center justify-center bg-gradient-to-br from-blue-600 to-blue-800 rounded-xl overflow-hidden shadow-lg group-hover:shadow-blue-500/20 transition-all duration-300 transform group-hover:scale-110">
+            {isLoading ? (
+              <div className="w-full h-full flex items-center justify-center bg-gray-700 animate-pulse" />
+            ) : logoUrl ? (
+              <img
+                src={logoUrl}
+                alt={`${job.company_name} logo`}
+                className="w-full h-full object-contain p-2 bg-white group-hover:scale-110 transition-transform duration-300"
+                loading="lazy"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  const initials = getInitials(job.company_name);
+                  target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(initials)}&background=3B82F6&color=fff&size=128`;
+                  target.className = 'w-full h-full object-cover';
+                }}
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-white font-bold text-xl group-hover:scale-110 transition-transform duration-300">
+                {getInitials(job.company_name)}
               </div>
-              
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center space-x-2 mb-2 flex-wrap">
-                  <h3 className="text-lg font-semibold text-gray-900 truncate">{job.title}</h3>
-                  <Badge className={trustIndicator.className}>
-                    {trustIndicator.label}
-                  </Badge>
-                  <Badge className={getJobTypeColor(job.jobType)}>
-                    {jobTypeLabel}
-                  </Badge>
-                </div>
-                
-                <div className="flex items-center text-sm text-gray-600 space-x-4 mb-2 flex-wrap">
-                  <span>{job.company.name}</span>
-                  <span>{job.location}</span>
-                  <span>{formatPostedDate(job.postedAt)}</span>
-                </div>
-                
-                <p className="text-gray-700 text-sm leading-relaxed line-clamp-2 mb-3">
-                  {job.description}
-                </p>
-
-                {job.status === "suspicious" && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-md p-3 mb-3">
-                    <div className="flex items-start space-x-2">
-                      <AlertTriangle className="text-amber-500 flex-shrink-0 mt-0.5" size={16} />
-                      <div>
-                        <p className="text-sm text-amber-800 font-medium">Potential Red Flags Detected</p>
-                        <ul className="text-xs text-amber-700 mt-1 space-y-1">
-                          <li>• Unusually high salary for experience level</li>
-                          <li>• Requests immediate contact outside platform</li>
-                        </ul>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-4">
-                    <span className="text-lg font-semibold text-gray-900">{job.salary}</span>
-                    <div className="flex items-center space-x-2 text-sm text-gray-600">
-                      {job.company.rating && (
-                        <>
-                          <Star className="text-yellow-400 fill-current" size={16} />
-                          <span>{job.company.rating}</span>
-                          <span>•</span>
-                        </>
-                      )}
-                      <span>Trust Score: </span>
-                      <span className={`font-medium ${
-                        (job.company.trustScore || 0) >= 90 ? "text-green-600" :
-                        (job.company.trustScore || 0) >= 70 ? "text-amber-600" : "text-red-600"
-                      }`}>
-                        {job.company.trustScore || 0}%
-                      </span>
-                      {(job.reportCount || 0) > 0 && (
-                        <>
-                          <span>•</span>
-                          <span className="text-red-600">{job.reportCount || 0} reports</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
+            )}
+          </div>
+          
+          <div className="flex-1 min-w-0">
+            <div className="flex justify-between items-start">
+              <CardTitle className="text-[#E2E8F0] group-hover:text-blue-400 transition-colors duration-300 truncate">
+                {job.title}
+              </CardTitle>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="h-8 w-8 rounded-full text-gray-400 hover:text-yellow-400 hover:bg-yellow-400/10 transition-colors"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onSaveToggle();
+                }}
+              >
+                <Bookmark 
+                  className={`h-4 w-4 transition-all duration-300 ${isSaved ? 'fill-yellow-400 text-yellow-400' : ''}`}
+                />
+              </Button>
             </div>
             
-            <div className="flex items-center space-x-2 ml-4 flex-shrink-0">
-              {job.status === "suspicious" ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowReportModal(true)}
-                  className="text-amber-700 border-amber-300 hover:bg-amber-50"
+            <p className="text-sm font-medium text-blue-300 mt-1 flex items-center">
+              <Briefcase className="w-3.5 h-3.5 mr-1.5 text-blue-400" />
+              <span className="truncate">{job.company_name}</span>
+            </p>
+            
+            {job.location && (
+              <p className="text-xs text-gray-300 mt-1 flex items-center">
+                <MapPin className="w-3.5 h-3.5 mr-1.5 text-gray-400" />
+                <span className="truncate">{job.location}</span>
+              </p>
+            )}
+            
+            {job.experienceLevel && (
+              <div className="mt-2">
+                <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-300 border-blue-400/20 hover:bg-blue-500/20">
+                  {job.experienceLevel}
+                </Badge>
+              </div>
+            )}
+          </div>
+        </CardHeader>
+
+        <CardContent className="pt-0 pb-6 px-6 space-y-4 text-[#E2E8F0] relative z-10">
+          {job.tags && job.tags.length > 0 && (
+            <div className="flex flex-wrap gap-2 -mt-2 mb-3">
+              {job.tags.slice(0, 4).map((tag, index) => (
+                <Badge 
+                  key={index} 
+                  variant="outline" 
+                  className="text-xs bg-[#1E293B] text-[#E2E8F0]/80 border-[#334155] hover:bg-[#334155] hover:scale-105 transition-all duration-200 group/tag"
                 >
-                  Report Job
-                </Button>
-              ) : (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => saveJobMutation.mutate()}
-                  disabled={saveJobMutation.isPending}
-                  className={isJobSaved ? "text-red-500" : "text-gray-400 hover:text-gray-600"}
-                >
-                  <Bookmark className={isJobSaved ? "fill-current" : ""} size={20} />
-                </Button>
-              )}
-              
-              <Button
-                disabled={job.status === "suspicious"}
-                className={job.status === "suspicious" ? "bg-gray-300 text-gray-600 cursor-not-allowed" : ""}
-              >
-                {job.status === "suspicious" ? "View Details" : "Apply Now"}
-              </Button>
+                  <span className="group-hover/tag:text-blue-300 transition-colors">{tag}</span>
+                </Badge>
+              ))}
+            </div>
+          )}
+          
+          <div className="flex justify-between items-center mt-4">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="group/button bg-transparent border-blue-500/40 text-blue-400 hover:bg-blue-500/10 hover:border-blue-500/60 hover:text-blue-300 transition-all duration-300 flex items-center gap-2 overflow-hidden relative"
+              onClick={(e) => {
+                e.preventDefault();
+                window.open(job.url, '_blank', 'noopener,noreferrer');
+              }}
+            >
+              <span className="relative z-10 flex items-center">
+                View Job
+                <ArrowRight className="w-3.5 h-3.5 ml-1.5 group-hover/button:translate-x-1 transition-transform duration-300" />
+              </span>
+              <span className="absolute inset-0 w-0 bg-gradient-to-r from-blue-500/10 to-transparent group-hover/button:w-full transition-all duration-500 -skew-x-12" />
+            </Button>
+            
+            <div className="flex items-center space-x-2">
+              <span className="text-xs text-gray-400 flex items-center">
+                <Clock className="w-3.5 h-3.5 mr-1 text-blue-400" />
+                Just now
+              </span>
             </div>
           </div>
           
-          <div className="flex items-center space-x-6 text-sm text-gray-600 pt-4 border-t border-gray-100 flex-wrap">
-            {job.skills && job.skills.length > 0 && (
-              <span className="flex items-center">
-                <Code className="mr-1" size={14} />
-                {job.skills.join(", ")}
-              </span>
-            )}
-            <span className="flex items-center">
-              <Clock className="mr-1" size={14} />
-              {jobTypeLabel}
-            </span>
-            <span className="flex items-center">
-              <GraduationCap className="mr-1" size={14} />
-              {job.experienceLevel.charAt(0).toUpperCase() + job.experienceLevel.slice(1)} level
-            </span>
-            {job.externalUrl && (
-              <a
-                href={job.externalUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center text-primary hover:underline"
-              >
-                <ExternalLink className="mr-1" size={14} />
-                View Original
-              </a>
-            )}
+          {/* Shine effect on hover */}
+          <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
+            <div className="absolute -inset-full top-0 bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 group-hover:animate-shine transition-opacity duration-300" />
           </div>
         </CardContent>
       </Card>
-
-      <ReportModal
-        isOpen={showReportModal}
-        onClose={() => setShowReportModal(false)}
-        jobId={job.id}
-        jobTitle={job.title}
-        companyName={job.company.name}
-        userId={userId}
-      />
-    </>
+    </div>
   );
-}
+};
+
+export default JobCard;

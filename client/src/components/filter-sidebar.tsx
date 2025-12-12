@@ -4,14 +4,22 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useQuery } from "@tanstack/react-query";
 
 interface FilterSidebarProps {
-  onFiltersChange: (filters: any) => void;
+  onFiltersChange?: (filters: any) => void;
 }
 
-export default function FilterSidebar({ onFiltersChange }: FilterSidebarProps) {
+export default function FilterSidebar({
+  onFiltersChange,
+}: FilterSidebarProps) {
   const [search, setSearch] = useState("");
   const [location, setLocation] = useState("");
   const [salary, setSalary] = useState("");
@@ -24,225 +32,291 @@ export default function FilterSidebar({ onFiltersChange }: FilterSidebarProps) {
     queryKey: ["/api/stats"],
   }) as { data: any };
 
-  const handleJobTypeChange = (type: string, checked: boolean) => {
-    if (checked) {
-      setJobTypes([...jobTypes, type]);
-    } else {
-      setJobTypes(jobTypes.filter(t => t !== type));
-    }
-  };
-
-  const handleExperienceChange = (level: string, checked: boolean) => {
-    if (checked) {
-      setExperienceLevels([...experienceLevels, level]);
-    } else {
-      setExperienceLevels(experienceLevels.filter(l => l !== level));
-    }
-  };
-
-  const handleCompanySizeChange = (size: string, checked: boolean) => {
-    if (checked) {
-      setCompanySizes([...companySizes, size]);
-    } else {
-      setCompanySizes(companySizes.filter(s => s !== size));
-    }
-  };
-
-  const handleTrustFilterChange = (filter: string, checked: boolean) => {
-    if (checked) {
-      setTrustFilters([...trustFilters, filter]);
-    } else {
-      setTrustFilters(trustFilters.filter(f => f !== filter));
-    }
+  const toggleArrayValue = (
+    stateSetter: React.Dispatch<React.SetStateAction<string[]>>,
+    value: string,
+    checked: boolean
+  ) => {
+    stateSetter((prev) =>
+      checked ? [...prev, value] : prev.filter((v) => v !== value)
+    );
   };
 
   const applyFilters = () => {
     const filters = {
       search: search || undefined,
       location: location || undefined,
+      salary: salary || undefined,
       jobType: jobTypes.length > 0 ? jobTypes : undefined,
       experienceLevel: experienceLevels.length > 0 ? experienceLevels : undefined,
       companySize: companySizes.length > 0 ? companySizes : undefined,
       trustScoreMin: trustFilters.includes("verified") ? 90 : undefined,
-      status: trustFilters.includes("hideSuspicious") ? ["verified", "pending"] : undefined,
+      status: trustFilters.includes("hideSuspicious")
+        ? ["verified", "pending"]
+        : undefined,
     };
-    onFiltersChange(filters);
+    onFiltersChange?.(filters);
   };
 
   return (
-    <aside className="space-y-6">
-      {/* Search */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Search Jobs</CardTitle>
+    <div className="space-y-6">
+      {/* Search and Filter */}
+      <Card className="bg-[#0B0C10] border border-[#00AEEF]/30 shadow-lg shadow-[#00AEEF]/10">
+        <CardHeader className="pb-3 border-b border-[#2E3A47]">
+          <CardTitle className="text-lg font-semibold text-white flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00AEEF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.3-4.3" />
+            </svg>
+            Search Jobs
+          </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <Label htmlFor="search">Job Title / Keywords</Label>
-            <Input
-              id="search"
-              placeholder="e.g., Frontend Developer"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+        <CardContent className="space-y-4 p-6">
+          <div className="space-y-2">
+            <Label htmlFor="search" className="text-[#C5C6C7] text-sm font-medium">
+              Keywords
+            </Label>
+            <div className="relative">
+              <Input
+                id="search"
+                placeholder="Job title, company, or keywords"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="bg-[#1F2833] border-[#2E3A47] text-white placeholder-[#5D6B7E] focus:border-[#00AEEF] focus:ring-1 focus:ring-[#00AEEF]/50"
+              />
+              <svg 
+                className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#5D6B7E]" 
+                xmlns="http://www.w3.org/2000/svg" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                strokeLinecap="round" 
+                strokeLinejoin="round"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.3-4.3" />
+              </svg>
+            </div>
           </div>
-          
-          <div>
-            <Label htmlFor="location">Location</Label>
-            <Input
-              id="location"
-              placeholder="e.g., San Francisco, Remote"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-            />
-          </div>
-          
-          <div>
-            <Label>Salary Range</Label>
-            <Select value={salary} onValueChange={setSalary}>
-              <SelectTrigger>
-                <SelectValue placeholder="Any Salary" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Any Salary</SelectItem>
-                <SelectItem value="30k-50k">$30k - $50k</SelectItem>
-                <SelectItem value="50k-80k">$50k - $80k</SelectItem>
-                <SelectItem value="80k-120k">$80k - $120k</SelectItem>
-                <SelectItem value="120k+">$120k+</SelectItem>
-              </SelectContent>
-            </Select>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="location" className="text-[#C5C6C7] text-sm font-medium">
+                Location
+              </Label>
+              <div className="relative">
+                <Input
+                  id="location"
+                  placeholder="City, state, or remote"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  className="bg-[#1F2833] border-[#2E3A47] text-white placeholder-[#5D6B7E] focus:border-[#00AEEF] focus:ring-1 focus:ring-[#00AEEF]/50"
+                />
+                <svg 
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#5D6B7E]" 
+                  xmlns="http://www.w3.org/2000/svg" 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  strokeWidth="2" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round"
+                >
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                  <circle cx="12" cy="10" r="3" />
+                </svg>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="salary" className="text-[#C5C6C7] text-sm font-medium">
+                Salary Range
+              </Label>
+              <Select onValueChange={setSalary} value={salary}>
+                <SelectTrigger className="bg-[#1F2833] border-[#2E3A47] text-white hover:border-[#00AEEF]/50 focus:ring-1 focus:ring-[#00AEEF]/50">
+                  <SelectValue placeholder="Any" className="text-left" />
+                </SelectTrigger>
+                <SelectContent className="bg-[#1F2833] border-[#2E3A47] text-white">
+                  <SelectItem value="50000" className="hover:bg-[#00AEEF]/10 focus:bg-[#00AEEF]/20">$50,000+</SelectItem>
+                  <SelectItem value="75000" className="hover:bg-[#00AEEF]/10 focus:bg-[#00AEEF]/20">$75,000+</SelectItem>
+                  <SelectItem value="100000" className="hover:bg-[#00AEEF]/10 focus:bg-[#00AEEF]/20">$100,000+</SelectItem>
+                  <SelectItem value="125000" className="hover:bg-[#00AEEF]/10 focus:bg-[#00AEEF]/20">$125,000+</SelectItem>
+                  <SelectItem value="150000" className="hover:bg-[#00AEEF]/10 focus:bg-[#00AEEF]/20">$150,000+</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Advanced Filters */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Filters</CardTitle>
+      {/* Job Type Filter */}
+      <Card className="bg-[#0B0C10] border border-[#00AEEF]/30 shadow-lg shadow-[#00AEEF]/10">
+        <CardHeader className="pb-3 border-b border-[#2E3A47]">
+          <CardTitle className="text-lg font-semibold text-white flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+              <line x1="16" y1="2" x2="16" y2="6" />
+              <line x1="8" y1="2" x2="8" y2="6" />
+              <line x1="3" y1="10" x2="21" y2="10" />
+            </svg>
+            Job Type
+          </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Job Type */}
-          <div>
-            <h4 className="font-medium text-gray-900 mb-3">Job Type</h4>
-            <div className="space-y-2">
-              {[
-                { value: "full-time", label: "Full-time", count: 1234 },
-                { value: "part-time", label: "Part-time", count: 456 },
-                { value: "remote", label: "Remote", count: 789 },
-                { value: "internship", label: "Internship", count: 234 },
-              ].map((type) => (
-                <div key={type.value} className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id={type.value}
-                      checked={jobTypes.includes(type.value)}
-                      onCheckedChange={(checked) => handleJobTypeChange(type.value, !!checked)}
-                    />
-                    <Label htmlFor={type.value} className="text-sm">{type.label}</Label>
-                  </div>
-                  <span className="text-xs text-gray-500">{type.count}</span>
-                </div>
-              ))}
+        <CardContent className="space-y-2 p-6">
+          {[
+            { value: "full-time", label: "Full-time" },
+            { value: "part-time", label: "Part-time" },
+            { value: "contract", label: "Contract" },
+            { value: "internship", label: "Internship" },
+            { value: "temporary", label: "Temporary" },
+          ].map((item) => (
+            <div key={item.value} className="flex items-center space-x-3 group">
+              <Checkbox
+                id={`job-type-${item.value}`}
+                checked={jobTypes.includes(item.value)}
+                onCheckedChange={(checked) =>
+                  toggleArrayValue(setJobTypes, item.value, checked as boolean)
+                }
+                className="h-5 w-5 rounded border-[#2E3A47] bg-[#1F2833] data-[state=checked]:bg-[#00AEEF] data-[state=checked]:border-[#00AEEF] group-hover:border-[#00AEEF]/50 transition-colors"
+              />
+              <Label
+                htmlFor={`job-type-${item.value}`}
+                className="text-sm font-normal text-[#C5C6C7] cursor-pointer group-hover:text-white transition-colors"
+              >
+                {item.label}
+              </Label>
             </div>
-          </div>
-
-          {/* Experience Level */}
-          <div>
-            <h4 className="font-medium text-gray-900 mb-3">Experience Level</h4>
-            <div className="space-y-2">
-              {[
-                { value: "entry", label: "Entry Level" },
-                { value: "mid", label: "Mid Level" },
-                { value: "senior", label: "Senior Level" },
-              ].map((level) => (
-                <div key={level.value} className="flex items-center space-x-2">
-                  <Checkbox
-                    id={level.value}
-                    checked={experienceLevels.includes(level.value)}
-                    onCheckedChange={(checked) => handleExperienceChange(level.value, !!checked)}
-                  />
-                  <Label htmlFor={level.value} className="text-sm">{level.label}</Label>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Company Size */}
-          <div>
-            <h4 className="font-medium text-gray-900 mb-3">Company Size</h4>
-            <div className="space-y-2">
-              {[
-                { value: "startup", label: "Startup (1-50)" },
-                { value: "medium", label: "Medium (51-500)" },
-                { value: "large", label: "Large (500+)" },
-              ].map((size) => (
-                <div key={size.value} className="flex items-center space-x-2">
-                  <Checkbox
-                    id={size.value}
-                    checked={companySizes.includes(size.value)}
-                    onCheckedChange={(checked) => handleCompanySizeChange(size.value, !!checked)}
-                  />
-                  <Label htmlFor={size.value} className="text-sm">{size.label}</Label>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Trust Score Filter */}
-          <div>
-            <h4 className="font-medium text-gray-900 mb-3">Trust Score</h4>
-            <div className="space-y-2">
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="verified"
-                  checked={trustFilters.includes("verified")}
-                  onCheckedChange={(checked) => handleTrustFilterChange("verified", !!checked)}
-                />
-                <Label htmlFor="verified" className="text-sm">✅ Verified Only</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="hideSuspicious"
-                  checked={trustFilters.includes("hideSuspicious")}
-                  onCheckedChange={(checked) => handleTrustFilterChange("hideSuspicious", !!checked)}
-                />
-                <Label htmlFor="hideSuspicious" className="text-sm">⚠️ Hide Suspicious</Label>
-              </div>
-            </div>
-          </div>
-
-          <Button onClick={applyFilters} className="w-full">
-            Apply Filters
-          </Button>
+          ))}
         </CardContent>
       </Card>
 
-      {/* Platform Stats */}
+      {/* Experience Level Filter */}
+      <Card className="bg-[#0B0C10] border border-[#00AEEF]/30 shadow-lg shadow-[#00AEEF]/10">
+        <CardHeader className="pb-3 border-b border-[#2E3A47]">
+          <CardTitle className="text-lg font-semibold text-white flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2L2 7l10 5 10-5-10-5z" />
+              <path d="M2 17l10 5 10-5" />
+              <path d="M2 12l10 5 10-5" />
+            </svg>
+            Experience Level
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 p-6">
+          {[
+            { value: "entry", label: "Entry Level" },
+            { value: "mid", label: "Mid Level" },
+            { value: "senior", label: "Senior" },
+            { value: "executive", label: "Executive" },
+          ].map((item) => (
+            <div key={item.value} className="flex items-center space-x-3 group">
+              <Checkbox
+                id={`exp-${item.value}`}
+                checked={experienceLevels.includes(item.value)}
+                onCheckedChange={(checked) =>
+                  toggleArrayValue(setExperienceLevels, item.value, checked as boolean)
+                }
+                className="h-5 w-5 rounded border-[#2E3A47] bg-[#1F2833] data-[state=checked]:bg-[#00AEEF] data-[state=checked]:border-[#00AEEF] group-hover:border-[#00AEEF]/50 transition-colors"
+              />
+              <Label
+                htmlFor={`exp-${item.value}`}
+                className="text-sm font-normal text-[#C5C6C7] cursor-pointer group-hover:text-white transition-colors"
+              >
+                {item.label}
+              </Label>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      {/* Trust & Safety Filter */}
+      <Card className="bg-[#0B0C10] border border-[#00AEEF]/30 shadow-lg shadow-[#00AEEF]/10">
+        <CardHeader className="pb-3 border-b border-[#2E3A47]">
+          <CardTitle className="text-lg font-semibold text-white flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+            Trust & Safety
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 p-6">
+          <div className="flex items-center space-x-3 group">
+            <Checkbox
+              id="verified-only"
+              checked={trustFilters.includes('verified')}
+              onCheckedChange={(checked) =>
+                toggleArrayValue(setTrustFilters, 'verified', checked as boolean)
+              }
+              className="h-5 w-5 rounded border-[#2E3A47] bg-[#1F2833] data-[state=checked]:bg-[#00AEEF] data-[state=checked]:border-[#00AEEF] group-hover:border-[#00AEEF]/50 transition-colors"
+            />
+            <Label
+              htmlFor="verified-only"
+              className="text-sm font-normal text-[#C5C6C7] cursor-pointer group-hover:text-white transition-colors"
+            >
+              Verified Companies Only
+            </Label>
+          </div>
+          <div className="flex items-center space-x-3 group">
+            <Checkbox
+              id="hide-suspicious"
+              checked={trustFilters.includes('hideSuspicious')}
+              onCheckedChange={(checked) =>
+                toggleArrayValue(setTrustFilters, 'hideSuspicious', checked as boolean)
+              }
+              className="h-5 w-5 rounded border-[#2E3A47] bg-[#1F2833] data-[state=checked]:bg-[#00AEEF] data-[state=checked]:border-[#00AEEF] group-hover:border-[#00AEEF]/50 transition-colors"
+            />
+            <Label
+              htmlFor="hide-suspicious"
+              className="text-sm font-normal text-[#C5C6C7] cursor-pointer group-hover:text-white transition-colors"
+            >
+              Hide Suspicious Listings
+            </Label>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Apply Filters Button */}
+      <Button 
+        onClick={applyFilters}
+        className="w-full bg-[#00AEEF] hover:bg-[#0095D6] text-white font-medium py-2 px-4 rounded-md transition-colors"
+      >
+        Apply Filters
+      </Button>
+
+      {/* Stats */}
       {stats && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Platform Stats</CardTitle>
+        <Card className="bg-blue-900/80 border-2 border-white/20 shadow-lg">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg font-semibold text-white">
+              Platform Stats
+            </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex justify-between">
-              <span className="text-sm text-gray-600">Total Jobs</span>
-              <span className="font-semibold">{stats.totalJobs.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-sm text-gray-600">Verified Companies</span>
-              <span className="font-semibold text-green-600">{stats.verifiedCompanies}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-sm text-gray-600">Fake Jobs Detected</span>
-              <span className="font-semibold text-red-600">{stats.fakeJobsDetected}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-sm text-gray-600">Success Rate</span>
-              <span className="font-semibold text-green-600">{stats.successRate}%</span>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="flex justify-between">
+                <span className="text-blue-200">Total Jobs</span>
+                <span className="font-medium text-white">
+                  {stats.totalJobs?.toLocaleString()}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-blue-200">Companies</span>
+                <span className="font-medium text-white">
+                  {stats.companies?.toLocaleString()}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-blue-200">New This Week</span>
+                <span className="font-medium text-white">
+                  {stats.newThisWeek?.toLocaleString()}
+                </span>
+              </div>
             </div>
           </CardContent>
         </Card>
       )}
-    </aside>
+    </div>
   );
 }
